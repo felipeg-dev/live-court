@@ -120,6 +120,15 @@ button.fp:hover{background:var(--panel-2)}
 .note.off{display:flex;align-items:center;gap:10px;background:color-mix(in srgb,var(--ink-3) 14%,var(--arena-2));border-color:var(--line);color:var(--ink-2)}
 .note.off b{color:var(--ink)}
 .offdot{width:10px;height:10px;border-radius:50%;flex:none;background:var(--ink-3);box-shadow:0 0 0 3px color-mix(in srgb,var(--ink-3) 30%,transparent)}
+.roster-grid{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px}
+.rcard{width:100%;display:grid;grid-template-columns:auto 1fr;grid-template-rows:auto auto;column-gap:10px;align-items:center;text-align:left;background:var(--arena-2);border:1px solid var(--line);border-radius:12px;padding:10px 12px;color:var(--ink)}
+.rcard:hover{border-color:var(--gold)}
+.rcard .gtag{grid-row:1/3}
+.rcard .rn{font-weight:600;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rcard .pmeta{grid-column:2}
+.chip:disabled{cursor:default}
+.chip:disabled:hover{transform:none}
+.bchip:disabled{cursor:default;color:var(--ink)}
 #acct:empty{display:none}
 .acct{display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--arena-2);border-radius:999px;padding:4px 12px 4px 4px;font-family:var(--f-ui);font-weight:600;font-size:15px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-2);min-height:40px}
 .acct .av{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:var(--panel-2);color:var(--ink);font-family:var(--f-score);font-size:17px}
@@ -446,7 +455,7 @@ h2.sec{font-family:var(--f-score);font-weight:800;font-size:26px;text-transform:
   th .lg{display:none} th .sh{display:inline}
   th{letter-spacing:.04em}
   td .pc{display:block;margin:0}
-  .nav{position:fixed;left:0;right:0;bottom:0;margin:0;z-index:30;display:grid;grid-template-columns:repeat(5,1fr);gap:0;
+  .nav{position:fixed;left:0;right:0;bottom:0;margin:0;z-index:30;display:grid;grid-template-columns:repeat(var(--tabs,5),1fr);gap:0;
     border-radius:18px 18px 0 0;border-width:1px 0 0;
     padding:6px max(6px,env(safe-area-inset-right,0px)) calc(6px + env(safe-area-inset-bottom,0px)) max(6px,env(safe-area-inset-left,0px));
     background:color-mix(in srgb,var(--arena-2) 94%,transparent);backdrop-filter:blur(14px);box-shadow:0 -10px 30px rgba(0,0,0,.4)}
@@ -781,7 +790,10 @@ const sortedPlayers = () => Object.values(state.players).sort((a, b) => a.name.l
 
 /* ---------- render ---------- */
 let vertical = innerWidth < 700;
+/* quem não entrou como organizador (versão web com Firebase) só visualiza */
+const viewer = () => state.mode === 'fb' && !state.user;
 function render(){
+  if(viewer() && state.view === 'times') state.view = 'partida';
   renderNav(); renderNote();
   const v = state.view;
   const main = $('#main');
@@ -796,12 +808,17 @@ const TABS = [
   ['historico', 'Histórico', NI('<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>')],
   ['evolucao', 'Evolução', NI('<path d="M4 19h16"/><path d="M5 15l4.5-4.5 3.5 3L19 7"/><path d="M15 7h4v4"/>')]
 ];
-const tabIdx = v => TABS.findIndex(t => t[0] === v);
+const tabsFor = () => viewer() ? TABS.filter(t => t[0] !== 'times') : TABS;
+const tabIdx = v => tabsFor().findIndex(t => t[0] === v);
 function renderNav(){
   const nav = $('#nav'), liveOn = state.live && state.live.status === 'live';
-  if(!nav.querySelector('.nav-ind')){
+  const role = viewer() ? 'viewer' : 'org';
+  if(!nav.querySelector('.nav-ind') || nav.dataset.role !== role){
+    const tabs = tabsFor();
+    nav.dataset.role = role;
     nav.classList.add('noanim');
-    nav.innerHTML = '<span class="nav-ind" aria-hidden="true"></span>' + TABS.map(([k, l, ic]) => `<button data-act="nav" data-v="${k}">${ic}<span class="nl">${l}</span><span class="dotslot"></span></button>`).join('');
+    nav.style.setProperty('--tabs', tabs.length);
+    nav.innerHTML = '<span class="nav-ind" aria-hidden="true"></span>' + tabs.map(([k, l, ic]) => `<button data-act="nav" data-v="${k}">${ic}<span class="nl">${l}</span><span class="dotslot"></span></button>`).join('');
     requestAnimationFrame(() => requestAnimationFrame(() => nav.classList.remove('noanim')));
   }
   nav.querySelectorAll('button').forEach(b => {
@@ -842,7 +859,17 @@ function bulkPreview(){
     <div class="row"><button class="cta sm" data-act="bulkOk">${nNew ? `Cadastrar ${nNew} e marcar presentes` : 'Marcar como presentes'}</button><button class="btn ghost sm" data-act="bulkAll" data-g="h">Todos homens</button><button class="btn ghost sm" data-act="bulkAll" data-g="m">Todas mulheres</button><button class="btn ghost" data-act="bulkCancel">Cancelar</button></div>
   </div>`;
 }
+function viewRoster(){
+  const ps = sortedPlayers(), tot = playerTotals();
+  return `<section>
+    <div class="pane-head"><div><h1>Jogadores</h1><p class="sub">Toque em um jogador para ver o perfil e a evolução dele.</p></div></div>
+    ${ps.length ? `<ul class="roster-grid">${ps.map(p => { const t = tot[p.id];
+      return `<li><button class="rcard" data-act="player" data-id="${p.id}">${gTag(p.g)}<span class="rn">${esc(p.name)}</span><span class="pmeta">${t ? `${t.g} ${t.g === 1 ? 'jogo' : 'jogos'} · ${t.p} pts` : 'sem partidas ainda'}</span></button></li>`; }).join('')}</ul>`
+      : `<div class="empty"><strong>Nenhum jogador ainda</strong>O organizador cadastra o grupo. Os nomes aparecem aqui assim que forem cadastrados.</div>`}
+  </section>`;
+}
 function viewPlayers(){
+  if(viewer()) return viewRoster();
   const ps = sortedPlayers(), tot = playerTotals();
   const list = ps.length ? `<ul class="plist">${ps.map(p => {
     const on = state.present.has(p.id), t = tot[p.id];
@@ -948,6 +975,9 @@ function viewMatch(){
   const m = state.live;
   if(!m){
     const last = state.matches.find(x => x.status === 'done');
+    if(viewer()) return `<section><div class="pane-head"><div><h1>Partida</h1></div></div>
+      <div class="empty"><strong>Nenhum jogo rolando</strong>Quando o organizador começar uma partida, o placar aparece aqui e atualiza sozinho.<br><br>
+      ${last ? `<button class="btn" data-act="openFromPlayer" data-id="${last.id}">Ver o último jogo</button> ` : ''}<button class="btn ghost" data-act="nav" data-v="evolucao">Ver o ranking</button></div></section>`;
     return `<section><div class="pane-head"><div><h1>Partida</h1></div></div>
       <div class="empty"><strong>Nenhum jogo rolando</strong>Monte os times e comece uma partida. A quadra aparece aqui com a rotação de cada lado.<br><br>
       <button class="cta" data-act="nav" data-v="times">Montar times</button>
@@ -963,7 +993,7 @@ function viewMatch(){
       <div class="tinfo">
         <div class="tname">${esc(t.name)}</div>
         <div class="srow"><span class="dots" aria-label="Sets vencidos: ${st.wins[T]}">${Array.from({length:need}, (_, i) => `<i class="${i < st.wins[T] ? 'f' : ''}"></i>`).join('')}</span>${st.serving === T && !st.done ? `<span class="srv">${BALL.replace('class="ball"', 'class="serveflag"')}Saque</span>` : ''}</div>
-        ${st.done ? '' : `<button class="adv" data-act="adv" data-team="${T}">+1 erro do adversário</button>`}
+        ${st.done || viewer() ? '' : `<button class="adv" data-act="adv" data-team="${T}">+1 erro do adversário</button>`}
       </div>
     </div>`; };
   const doneSets = st.sets.filter(s => s.w);
@@ -975,7 +1005,7 @@ function viewMatch(){
       const srv = st.serving === T && pos === 1 && !st.done;
       const pick = state.ui.sub && state.ui.sub.out === pid && pid;
       cells += `<div class="cell" style="grid-column:${c};grid-row:${r}">${pid
-        ? `<button class="chip ${pick ? 'pick' : ''}" data-act="chip" data-team="${T}" data-id="${pid}" aria-label="Ponto de ${esc(pname(pid, m))}"><span class="pos">${pos}</span><span class="nm ${shortName(pid, m).length > 6 ? 'long' : ''}">${esc(shortName(pid, m))}</span>${ptsBy[pid] ? `<span class="cnt">${ptsBy[pid]}</span>` : ''}${srv ? BALL : ''}</button>`
+        ? `<button class="chip ${pick ? 'pick' : ''}" ${viewer() ? 'disabled' : ''} data-act="chip" data-team="${T}" data-id="${pid}" aria-label="Ponto de ${esc(pname(pid, m))}"><span class="pos">${pos}</span><span class="nm ${shortName(pid, m).length > 6 ? 'long' : ''}">${esc(shortName(pid, m))}</span>${ptsBy[pid] ? `<span class="cnt">${ptsBy[pid]}</span>` : ''}${srv ? BALL : ''}</button>`
         : `<div class="chip empty"><span class="pos">${pos}</span><span class="nm">vazio</span></div>`}</div>`;
     }
     return `<div class="half" id="half${T}" style="--tc:${t.color}">${cells}</div>`; };
@@ -984,8 +1014,8 @@ function viewMatch(){
     const subT = state.ui.sub && state.ui.sub.team === T && state.ui.sub.out;
     const rodT = (m.rod || []).includes(T);
     const nextIn = rodT ? b.find(id => { const g = gOf(m, id); return g === 'h' || !g; }) : null;
-    return `<div class="bench ${rodT ? 'rod' : ''}" style="--tc:${t.color}"><div class="lbl"><span>${rodT ? 'Reserva · rodízio no saque' : 'Banco'} · ${esc(t.name)}</span><button class="btn sm ghost" data-act="rotate" data-team="${T}" title="Rodar manualmente">Rodar</button></div>
-      ${b.length ? `<ul>${b.map(id => `<li><button class="bchip ${subT ? 'can' : ''} ${id === nextIn ? 'next' : ''}" data-act="bench" data-team="${T}" data-id="${id}">${gTag(gOf(m, id))} ${esc(shortName(id, m))}${ptsBy[id] ? ` · ${ptsBy[id]}` : ''}${id === nextIn ? '<em>entra no próximo saque</em>' : ''}</button></li>`).join('')}</ul>` : `<p class="none">Sem reservas</p>`}
+    return `<div class="bench ${rodT ? 'rod' : ''}" style="--tc:${t.color}"><div class="lbl"><span>${rodT ? 'Reserva · rodízio no saque' : 'Banco'} · ${esc(t.name)}</span>${viewer() ? '' : `<button class="btn sm ghost" data-act="rotate" data-team="${T}" title="Rodar manualmente">Rodar</button>`}</div>
+      ${b.length ? `<ul>${b.map(id => `<li><button class="bchip ${subT ? 'can' : ''} ${id === nextIn ? 'next' : ''}" ${viewer() ? 'disabled' : ''} data-act="bench" data-team="${T}" data-id="${id}">${gTag(gOf(m, id))} ${esc(shortName(id, m))}${ptsBy[id] ? ` · ${ptsBy[id]}` : ''}${id === nextIn ? '<em>entra no próximo saque</em>' : ''}</button></li>`).join('')}</ul>` : `<p class="none">Sem reservas</p>`}
       ${rodT ? `<p class="none" style="margin-top:6px">Quando o time recupera o saque, o homem que iria sacar vai para a reserva e quem está esperando entra sacando.</p>` : ''}</div>`; };
   const feed = st.log.slice(-6).reverse();
   const subHint = state.ui.sub ? `<div class="hint" role="status">${state.ui.sub.out ? `Agora toque no reserva que entra no lugar de <b>${esc(pname(state.ui.sub.out, m))}</b>.` : 'Substituição: toque no jogador da quadra que vai sair.'}<span class="spacer"></span><button class="btn sm" data-act="subMode">Cancelar</button></div>` : '';
@@ -1002,14 +1032,14 @@ function viewMatch(){
     <div class="court-wrap"><div class="court ${vertical ? 'v' : 'h'}">${half('A')}${half('B')}${lines}<div class="net"></div></div></div>
     <div class="below">
       ${bench('A')}
-      <div class="controls">
+      ${viewer() ? `<div class="controls"><button class="btn ghost" data-act="sound">${state.sound ? 'Som ligado' : 'Som desligado'}</button></div>` : `<div class="controls">
         <button class="btn" data-act="undo" ${m.events.length ? '' : 'disabled'}>↶ Desfazer</button>
         <button class="btn ${state.ui.sub ? 'on' : ''}" data-act="subMode" ${st.done ? 'disabled' : ''}>Substituição</button>
         <button class="btn ghost" data-act="sound">${state.sound ? 'Som ligado' : 'Som desligado'}</button>
         ${st.done ? `<button class="btn ghost" data-act="showEnd">Ver resultado</button>`
           : endConf ? `<span class="confirm">Encerrar agora? <button class="btn sm warn" data-act="endMatch">Sim</button><button class="btn sm ghost" data-act="cancel">Não</button></span>`
           : `<button class="btn ghost warn" data-act="ask" data-k="end">Encerrar partida</button>`}
-      </div>
+      </div>`}
       ${bench('B')}
     </div>
     <div class="feed"><div class="lbl">Últimos pontos</div>
@@ -1094,7 +1124,7 @@ function viewStats(){
       <div class="forms">${forms.map(f => `<div class="form">
         <div class="fhead"><span class="frec">${rec(f)}</span><span class="pc">${Math.round(f.wins / f.games * 100)}% · saldo ${saldo(f.diff)}</span><span class="spacer"></span><span class="pc">${new Date(f.last).toLocaleDateString('pt-BR', { day:'2-digit', month:'short' })}</span></div>
         <div class="fnames">${names(f.ids, f.m)}</div>
-        <div class="row"><button class="btn sm" data-act="useLineup" data-k="${f.key}" data-team="A">Usar no time A</button><button class="btn sm" data-act="useLineup" data-k="${f.key}" data-team="B">Usar no time B</button></div>
+        ${viewer() ? '' : `<div class="row"><button class="btn sm" data-act="useLineup" data-k="${f.key}" data-team="A">Usar no time A</button><button class="btn sm" data-act="useLineup" data-k="${f.key}" data-team="B">Usar no time B</button></div>`}
       </div>`).join('')}</div>` : ''}
     ${pairs.length ? `<h2 class="sec">Duplas que mais vencem juntas</h2>
       <div class="tablebox"><table class="pairs"><thead><tr><th>#</th><th>Dupla</th><th>Jogos juntos</th><th>Vitórias</th><th>Saldo</th></tr></thead>
@@ -1226,7 +1256,7 @@ function viewHistory(){
       <div class="row">${ms.length ? (sel
         ? (delConf ? `<span class="confirm">Excluir ${sel.size} ${sel.size === 1 ? 'partida' : 'partidas'} para sempre? <button class="btn sm warn" data-act="delSelected">Excluir</button><button class="btn sm ghost" data-act="cancel">Não</button></span>`
           : `<button class="btn ghost sm" data-act="selAll">Marcar todas</button><button class="btn warn" data-act="ask" data-k="delSel" ${sel.size ? '' : 'disabled'}>Excluir ${sel.size || ''} selecionadas</button><button class="btn ghost" data-act="selMode">Cancelar</button>`)
-        : `<button class="btn" data-act="selMode">Selecionar para excluir</button>`) : ''}</div></div>
+        : viewer() ? '' : `<button class="btn" data-act="selMode">Selecionar para excluir</button>`) : ''}</div></div>
     ${ms.length ? html : `<div class="empty"><strong>Nenhuma partida ainda</strong>As partidas aparecem aqui assim que começam.</div>`}
   </section>`;
 }
@@ -1250,14 +1280,14 @@ function matchCard(m){
     detail = `<div class="detail">
       <div class="dcols">${col('A')}${col('B')}</div>
       <p class="pc" style="margin:0">${m.cfg.bestOf === 1 ? 'Set único' : 'Melhor de ' + m.cfg.bestOf} até ${m.cfg.setPoints}${mins ? ` · durou ${mins} min` : ''}</p>
-      <div class="row">
+      ${viewer() ? '' : `<div class="row">
         <button class="btn sm" data-act="loadTeams" data-id="${m.id}">Carregar estes times</button>
         ${m.status !== 'live' ? `<button class="btn sm" data-act="rematch" data-id="${m.id}" ${otherLive ? 'disabled title="Já existe uma partida em andamento"' : ''}>Próximo jogo</button>` : ''}
         ${m.status !== 'live' ? `<button class="btn sm ghost" data-act="reopen" data-id="${m.id}" ${otherLive ? 'disabled title="Já existe uma partida em andamento"' : ''}>Reabrir partida</button>` : ''}
         <span class="spacer"></span>
         ${conf ? `<span class="confirm">Excluir para sempre? <button class="btn sm warn" data-act="delMatch" data-id="${m.id}">Sim</button><button class="btn sm ghost" data-act="cancel">Não</button></span>`
                : `<button class="btn sm warn" data-act="ask" data-k="m:${m.id}">Excluir</button>`}
-      </div></div>`;
+      </div>`}</div>`;
   }
   return `<div class="mcard ${picked ? 'picked' : ''} ${open ? 'open' : ''}">
     ${sel ? `<button class="selbox" data-act="selToggle" data-id="${m.id}" aria-pressed="${picked}" aria-label="Selecionar partida"><span class="check"></span></button>` : ''}
@@ -1555,6 +1585,8 @@ const act = {
 const canWrite = () => state.mode !== 'fb' || !!state.user;
 const WRITE_ACTS = new Set(['delPlayer','gender','bulkOk','start','discardStart','chip','adv','tag','undo','bench','rotate','subMode',
   'endMatch','rematch','reopen','delSelected','delMatch','importLocal']);
+// o que quem só visualiza pode fazer; qualquer outra ação pede o login
+const VIEW_ACTS = new Set(['nav','player','openFromPlayer','shareP','openMatch','sort','gfilter','closeOv','goStats','showEnd','sound','login','resetPass','cancel']);
 function renderAcct(){
   const el = $('#acct'); if(!el) return;
   if(state.mode !== 'fb'){ el.innerHTML = ''; return; }
@@ -1616,7 +1648,7 @@ document.addEventListener('click', e => {
   const el = e.target.closest('[data-act]'); if(!el || el.disabled) return;
   const a = el.dataset.act, f = act[a]; if(!f) return;
   e.preventDefault();
-  if(WRITE_ACTS.has(a) && !canWrite()){
+  if((WRITE_ACTS.has(a) || (viewer() && !VIEW_ACTS.has(a))) && !canWrite()){
     openLogin(a === 'chip' || a === 'adv' ? 'Para marcar pontos, entre como organizador. Sem entrar, você acompanha o placar ao vivo.' : 'Para fazer alterações, entre como organizador.');
     return;
   }
@@ -1680,7 +1712,7 @@ document.addEventListener('submit', e => {
   if(/[,;]/.test(inp.value)) previewNames(inp.value); else addNames(inp.value);
 });
 document.addEventListener('paste', e => {
-  if(e.target.id !== 'newName') return;
+  if(e.target.id !== 'newName' || !canWrite()) return;
   const text = (e.clipboardData || window.clipboardData).getData('text');
   if(!/[\r\n,;\t]/.test(text)) return;
   e.preventDefault(); previewNames(text);
