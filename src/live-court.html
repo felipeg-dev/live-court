@@ -100,6 +100,9 @@ button.fp:hover{background:var(--panel-2)}
 .res.l{background:color-mix(in srgb,var(--danger) 18%,var(--panel));color:#FFB0B0}
 @media (max-width:900px){ .kpis.k6{grid-template-columns:repeat(3,minmax(0,1fr))} .pcols{grid-template-columns:1fr 1fr} }
 @media (max-width:700px){ .pcols{grid-template-columns:1fr} .pav{width:64px;height:64px;font-size:28px} .glist{grid-template-columns:1fr} }
+.note.off{display:flex;align-items:center;gap:10px;background:color-mix(in srgb,var(--ink-3) 14%,var(--arena-2));border-color:var(--line);color:var(--ink-2)}
+.note.off b{color:var(--ink)}
+.offdot{width:10px;height:10px;border-radius:50%;flex:none;background:var(--ink-3);box-shadow:0 0 0 3px color-mix(in srgb,var(--ink-3) 30%,transparent)}
 #acct:empty{display:none}
 .acct{display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--arena-2);border-radius:999px;padding:4px 12px 4px 4px;font-family:var(--f-ui);font-weight:600;font-size:15px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-2);min-height:40px}
 .acct .av{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:var(--panel-2);color:var(--ink);font-family:var(--f-score);font-size:17px}
@@ -605,8 +608,10 @@ const store = {
     }
     this.db = db; state.mode = mode;
     renderAcct();
+    const net = () => { state.offline = !navigator.onLine; renderNote(); };
+    addEventListener('online', net); addEventListener('offline', net); net();
     let ready = { p:false, m:false };
-    const timer = setTimeout(() => { if(!(ready.p && ready.m)){ state.note = 'Ainda não consegui falar com o banco de dados do grupo. O que aparece pode estar desatualizado.'; renderNote(); } }, 10000);
+    const timer = setTimeout(() => { if(!(ready.p && ready.m) && navigator.onLine){ state.note = 'Ainda não consegui falar com o banco de dados do grupo. O que aparece pode estar desatualizado.'; renderNote(); } }, 10000);
     const settle = () => { if(ready.p && ready.m){ clearTimeout(timer); if(state.note){ state.note = ''; renderNote(); } } };
     const onErr = e => { clearTimeout(timer); state.note = 'A conexão com o banco de dados caiu (' + (e && e.code || 'erro') + '). Recarregue a página para tentar de novo.'; renderNote(); };
     db.collection('players').onSnapshot(snap => {
@@ -794,7 +799,11 @@ function moveInd(){
   ind.style.width = b.offsetWidth + 'px'; ind.style.height = b.offsetHeight + 'px';
   ind.style.transform = `translate(${b.offsetLeft}px, ${b.offsetTop}px)`;
 }
-function renderNote(){ $('#note').innerHTML = state.note ? `<div class="note" role="status">${esc(state.note)}</div>` : ''; }
+function renderNote(){
+  const off = state.offline && state.mode === 'fb'
+    ? `<div class="note off" role="status"><span class="offdot"></span><span><b>Sem internet.</b> Pode marcar normalmente: tudo fica salvo neste aparelho e vai para o grupo quando a conexão voltar.</span></div>` : '';
+  $('#note').innerHTML = off + (state.note && !(state.offline && /salvar|conexão|banco/.test(state.note)) ? `<div class="note" role="status">${esc(state.note)}</div>` : '');
+}
 
 /* --- Jogadores --- */
 function playerTotals(){
