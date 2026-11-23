@@ -10,7 +10,15 @@ Placar de vôlei do grupo: cadastro de jogadores, montagem de times com mascotes
 - **No iPhone:** abra o link acima no **Safari**, toque em **Compartilhar** e depois em **Adicionar à Tela de Início**. O app abre em tela cheia, como um aplicativo, e funciona mesmo sem internet na quadra.
 - **No Android:** abra o link no Chrome e toque em **Instalar app**.
 
-> Os dados (jogadores e partidas) ficam salvos **no aparelho** onde foram registrados. O que for marcado no iPhone não aparece no PC, e vice-versa. Use sempre o mesmo aparelho para marcar os jogos.
+## Dados e organizadores
+
+Os jogadores e as partidas ficam no banco do grupo (Firebase Firestore, projeto `live-court`) e aparecem iguais em todos os aparelhos. Sem internet na quadra, o app continua marcando e envia tudo quando a conexão volta.
+
+- **Espectadores:** qualquer pessoa com o link vê o placar ao vivo, o histórico e o ranking.
+- **Organizadores:** tocam em **Entrar** e usam e-mail e senha para cadastrar, montar times e marcar pontos.
+- **Novo organizador:** no [console do Firebase](https://console.firebase.google.com/project/live-court/authentication/users), em Authentication → Usuários → Adicionar usuário.
+- **Regras de segurança:** ficam em `firestore.rules`. Depois de mudar o arquivo, cole o conteúdo no console (Firestore → Regras → Publicar).
+- **Configuração do app web:** fica em `firebase.config.json` (não é secreta; os dados são protegidos pelas regras e pelo login).
 
 ## Estrutura
 
