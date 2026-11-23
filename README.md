@@ -4,8 +4,10 @@ Placar de vôlei do grupo: cadastro de jogadores, montagem de times com mascotes
 
 ## Como abrir
 
+**Link do app:** <https://felipeg-dev.github.io/live-court/>
+
 - **No PC:** ícone **Live Court** na área de trabalho.
-- **No iPhone:** abra o link do app no **Safari**, toque em **Compartilhar** e depois em **Adicionar à Tela de Início**. O app abre em tela cheia, como um aplicativo, e funciona mesmo sem internet na quadra.
+- **No iPhone:** abra o link acima no **Safari**, toque em **Compartilhar** e depois em **Adicionar à Tela de Início**. O app abre em tela cheia, como um aplicativo, e funciona mesmo sem internet na quadra.
 - **No Android:** abra o link no Chrome e toque em **Instalar app**.
 
 > Os dados (jogadores e partidas) ficam salvos **no aparelho** onde foram registrados. O que for marcado no iPhone não aparece no PC, e vice-versa. Use sempre o mesmo aparelho para marcar os jogos.
