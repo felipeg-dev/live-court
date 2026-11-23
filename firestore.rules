@@ -1,0 +1,35 @@
+rules_version = '2';
+
+// Regras do banco do Live Court.
+// Qualquer pessoa com o link vê jogadores, partidas e o placar ao vivo.
+// Só quem entra com uma conta de organizador (criada no Firebase > Authentication) pode alterar.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function organizador() {
+      return request.auth != null;
+    }
+
+    match /players/{playerId} {
+      allow read: if true;
+      allow delete: if organizador();
+      allow create, update: if organizador()
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 40;
+    }
+
+    match /matches/{matchId} {
+      allow read: if true;
+      allow delete: if organizador();
+      allow create, update: if organizador()
+        && request.resource.data.status in ['live', 'done', 'cancelled']
+        && request.resource.data.events is list;
+    }
+
+    // qualquer outro caminho fica fechado
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

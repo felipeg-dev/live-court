@@ -155,7 +155,7 @@ self.addEventListener('fetch', e => {
     return;
   }
   // fontes e arquivos do app: cache primeiro, atualiza em segundo plano
-  if (url.origin === location.origin || /fonts\\.(googleapis|gstatic)\\.com$/.test(url.hostname)) {
+  if (url.origin === location.origin || /fonts\\.(googleapis|gstatic)\\.com$/.test(url.hostname) || (url.hostname === 'www.gstatic.com' && url.pathname.startsWith('/firebasejs/'))) {
     e.respondWith(caches.match(req).then(hit => {
       const net = fetch(req).then(r => { if (r.ok || r.type === 'opaque') { const c = r.clone(); caches.open(CACHE).then(x => x.put(req, c)); } return r; }).catch(() => hit);
       return hit || net;
@@ -165,6 +165,21 @@ self.addEventListener('fetch', e => {
 """
 
 
+FIREBASE_VERSION = "10.14.1"
+FIREBASE_CONFIG = ROOT / "firebase.config.json"
+
+
+def firebase_head():
+    """Liga o banco do grupo (Firestore) quando firebase.config.json existe."""
+    if not FIREBASE_CONFIG.exists():
+        print("aviso: firebase.config.json não encontrado; o app vai salvar só no aparelho")
+        return ""
+    cfg = json.loads(FIREBASE_CONFIG.read_text(encoding="utf-8"))
+    base = f"https://www.gstatic.com/firebasejs/{FIREBASE_VERSION}"
+    tags = "".join(f'<script src="{base}/firebase-{m}-compat.js"></script>\n' for m in ("app", "auth", "firestore"))
+    return tags + "<script>window.LC_FIREBASE = " + json.dumps(cfg).replace("<", "\\u003c") + ";</script>\n"
+
+
 def build_page():
     src = SRC.read_text(encoding="utf-8")
     cut = src.index('<div id="app">')
@@ -172,7 +187,7 @@ def build_page():
     # o cabeçalho do arquivo-fonte traz title, fontes e estilos; charset/viewport vêm do HEAD_EXTRA
     head = "\n".join(l for l in head.splitlines()
                      if not l.strip().startswith(('<meta charset', '<meta name="viewport"', '<meta name="claude:')))
-    html = ("<!doctype html>\n<html lang=\"pt-BR\">\n<head>\n" + HEAD_EXTRA + head.strip() +
+    html = ("<!doctype html>\n<html lang=\"pt-BR\">\n<head>\n" + HEAD_EXTRA + firebase_head() + head.strip() +
             "\n</head>\n<body>\n" + body.strip() + "\n" + SW_REGISTER + "\n</body>\n</html>\n")
     (ROOT / "index.html").write_text(html, encoding="utf-8", newline="\n")
     version = hashlib.sha1(html.encode("utf-8")).hexdigest()[:10]

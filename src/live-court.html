@@ -44,6 +44,21 @@ button{cursor:pointer}
 .nav .ni{width:18px;height:18px;flex:none;transition:transform .3s,color .3s}
 .nav .dotslot:empty{display:none}
 .nav .live-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--danger);animation:blink 1.4s infinite}
+#acct:empty{display:none}
+.acct{display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--arena-2);border-radius:999px;padding:4px 12px 4px 4px;font-family:var(--f-ui);font-weight:600;font-size:15px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-2);min-height:40px}
+.acct .av{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:var(--panel-2);color:var(--ink);font-family:var(--f-score);font-size:17px}
+.acct .av svg{width:15px;height:15px}
+.acct.on{color:var(--ink);border-color:color-mix(in srgb,var(--gold) 50%,var(--line))}
+.acct.on .av{background:var(--gold);color:var(--arena)}
+.login{text-align:left}
+.login h2,.login .eyebrow{text-align:center}
+.fld{display:flex;flex-direction:column;gap:5px;margin-bottom:12px}
+.fld input{background:var(--arena);border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:17px;width:100%;box-sizing:border-box}
+.fld input:focus{border-color:var(--gold);outline:none}
+.lerr{min-height:20px;margin:0 0 4px;font-size:14px;color:var(--gold)}
+.linkbtn{display:block;margin:12px auto 0;background:none;border:0;color:var(--ink-3);font-size:14px;text-decoration:underline;text-underline-offset:3px}
+.hint.spect{background:color-mix(in srgb,var(--ok) 10%,var(--arena-2));border-color:color-mix(in srgb,var(--ok) 40%,var(--line));color:var(--ink-2)}
+.ldot{width:9px;height:9px;border-radius:50%;background:var(--danger);animation:blink 1.4s infinite;flex:none}
 main > section.in-r{animation:inR .38s cubic-bezier(.2,.9,.3,1)}
 main > section.in-l{animation:inL .38s cubic-bezier(.2,.9,.3,1)}
 @keyframes inR{from{opacity:0;transform:translateX(28px)}}
@@ -347,7 +362,10 @@ h2.sec{font-family:var(--f-score);font-weight:800;font-size:26px;text-transform:
   .kpis{grid-template-columns:1fr 1fr 1fr}
   .kpi b{font-size:28px}
   /* celular: abas viram barra fixa embaixo, ao alcance do polegar */
-  .top{position:static;margin-bottom:14px;backdrop-filter:none;background:none}
+  .top{position:static;margin-bottom:14px;backdrop-filter:none;background:none;flex-wrap:nowrap}
+  #acct{margin-left:auto}
+  .acct .al{display:none}
+  .acct{padding:4px}
   .spark{width:56px}
   th .lg{display:none} th .sh{display:inline}
   th{letter-spacing:.04em}
@@ -381,6 +399,7 @@ h2.sec{font-family:var(--f-score);font-weight:800;font-size:26px;text-transform:
       <div>Live Court<small>placar do grupo</small></div>
     </div>
     <nav class="nav" id="nav" aria-label="Seções"></nav>
+    <div id="acct"></div>
   </header>
   <div id="note"></div>
   <main id="main"></main>
@@ -424,7 +443,8 @@ const ICON = {
   up:'<svg viewBox="0 0 16 16"><path d="M8 3l5 6H3z" fill="currentColor"/></svg>',
   down:'<svg viewBox="0 0 16 16"><path d="M8 13L3 7h10z" fill="currentColor"/></svg>',
   swap:'<svg viewBox="0 0 16 16"><path d="M2 5h10l-3-3M14 11H4l3 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-  x:'<svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>'
+  x:'<svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+  lock:'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 015 0v2"/></svg>'
 };
 const BALL = '<svg class="ball" viewBox="0 0 24 24" aria-label="Saque"><circle cx="12" cy="12" r="10.5" fill="#FFF5E6" stroke="#0C1626" stroke-width="1.6"/><path d="M12 1.5c-1.2 4.2.2 8.2 3.2 10.6M22.4 13.2c-3.8-1.7-7.9-1.1-10.6 1.2M4.6 19.6c1.7-3.8 4.6-6.6 7.4-6.2" fill="none" stroke="#0C1626" stroke-width="1.5"/></svg>';
 
@@ -504,15 +524,30 @@ const saveCache = () => LS.set('cache', { players: state.players, matches: state
 const store = {
   db: null,
   async init(){
-    let db = null;
-    try{ db = (window.claude && window.claude.use) ? await window.claude.use('db') : null; }catch(e){ db = null; }
+    let db = null, mode = 'db';
+    if(window.LC_FIREBASE && window.firebase){
+      // versão web: banco do grupo no Firebase (Firestore), com login de organizador
+      try{
+        firebase.initializeApp(window.LC_FIREBASE);
+        db = firebase.firestore(); mode = 'fb';
+        try{ await db.enablePersistence({ synchronizeTabs:true }); }catch(e){}
+        state.authReady = false;
+        firebase.auth().onAuthStateChanged(u => {
+          state.user = u ? { email:u.email || '' } : null; state.authReady = true;
+          renderAcct(); render();
+        });
+      }catch(e){ db = null; }
+    } else {
+      try{ db = (window.claude && window.claude.use) ? await window.claude.use('db') : null; }catch(e){ db = null; }
+    }
     if(!db){
       state.mode = 'local';
       state.players = LS.get('players', state.players);
       state.matches = LS.get('matches', state.matches);
       pickLive(); render(); return;
     }
-    this.db = db; state.mode = 'db';
+    this.db = db; state.mode = mode;
+    renderAcct();
     let ready = { p:false, m:false };
     const timer = setTimeout(() => { if(!(ready.p && ready.m)){ state.note = 'Ainda não consegui falar com o banco de dados do grupo. O que aparece pode estar desatualizado.'; renderNote(); } }, 10000);
     const settle = () => { if(ready.p && ready.m){ clearTimeout(timer); if(state.note){ state.note = ''; renderNote(); } } };
@@ -560,10 +595,37 @@ const store = {
     if(this.db){ try{ await this.db.doc('matches/' + id).delete(); }catch(e){ writeErr(e); } }
     else LS.set('matches', state.matches);
     saveCache();
+  },
+  // leva para o banco do grupo o que foi salvo só neste aparelho (antes do Firebase)
+  localLeftovers(){
+    if(state.mode !== 'fb' || LS.get('importDone', false)) return { players:[], matches:[] };
+    const lp = LS.get('players', {}), lm = LS.get('matches', []);
+    return {
+      players: Object.values(lp).filter(p => p && p.id && !state.players[p.id]),
+      matches: (Array.isArray(lm) ? lm : []).filter(m => m && m.id && m.status !== 'cancelled' && !state.matches.some(x => x.id === m.id))
+    };
+  },
+  async importLocal(){
+    const { players, matches } = this.localLeftovers();
+    const ops = [
+      ...players.map(p => ['players/' + p.id, { name:p.name, createdAt:p.createdAt || Date.now(), g:p.g || null }]),
+      ...matches.map(m => ['matches/' + m.id, Object.assign(clone(m), { status:m.status === 'live' ? 'done' : m.status })])
+    ];
+    for(let i = 0; i < ops.length; i += 400){
+      const b = this.db.batch();
+      ops.slice(i, i + 400).forEach(([path, data]) => b.set(this.db.doc(path), data));
+      await b.commit();
+    }
+    LS.set('importDone', true);
+    return { p:players.length, m:matches.length };
   }
 };
 function writeErr(e){
   const c = e && e.code;
+  if(c === 'permission-denied' || c === 'unauthenticated'){
+    state.note = state.user ? 'Sua conta não tem permissão para alterar os dados do grupo.' : 'Entre como organizador para salvar alterações.';
+    renderNote(); return;
+  }
   state.note = c === 'invalid_argument' ? 'Você pode ver os dados, mas não tem permissão para alterar. Peça acesso de colaborador a quem compartilhou.'
     : c === 'quota_exceeded' ? 'O banco de dados do grupo está cheio. Exclua partidas antigas em Evolução.'
     : 'Não consegui salvar agora. Confira a conexão; o placar continua neste aparelho.';
@@ -716,6 +778,9 @@ function viewPlayers(){
     <div class="pane-head"><div><h1>Jogadores</h1><p class="sub">Cadastre o grupo uma vez. Antes de cada jogo, toque em quem está presente.</p></div></div>
     <form class="add" id="addForm" autocomplete="off"><input id="newName" placeholder="Nome ou lista colada" aria-label="Nome do jogador ou lista de nomes"><button class="btn" type="submit">Cadastrar</button></form>
     ${bulkPreview()}
+    ${(() => { if(state.mode !== 'fb' || !state.user) return ''; const l = store.localLeftovers(); if(!l.players.length && !l.matches.length) return '';
+      return `<div class="hint" role="status"><span>Este aparelho tem dados salvos antes do banco do grupo: <b>${l.players.length} ${l.players.length === 1 ? 'jogador' : 'jogadores'}</b> e <b>${l.matches.length} ${l.matches.length === 1 ? 'partida' : 'partidas'}</b>.</span><span class="spacer"></span><button class="btn sm on" data-act="importLocal">Enviar para o grupo</button><button class="btn sm ghost" data-act="skipImport">Ignorar</button></div>`; })()}
+    ${state.mode === 'fb' && !state.user ? `<div class="hint spect" role="status"><span>Você está vendo como espectador. Para cadastrar jogadores e marcar pontos, entre como organizador.</span><span class="spacer"></span><button class="btn sm" data-act="login">Entrar</button></div>` : ''}
     <p class="addhint">${state.ui.addMsg ? `<b role="status">${esc(state.ui.addMsg)}</b> ` : ''}Cole a lista do grupo (um nome por linha, ou separados por vírgula). Números, marcadores e emojis são ignorados, e quem já está cadastrado só é marcado como presente.</p>
     ${ps.length ? `<div class="bar"><span class="count">${n}</span><span class="lbl">presentes hoje</span>${n ? `<span class="gsum">${gTag('h')} ${nh} &nbsp;${gTag('m')} ${nm}${nx ? ` &nbsp;<span class="warnx">${nx} sem gênero</span>` : ''}</span>` : ''}<span class="spacer"></span><button class="btn sm ghost" data-act="allPresent">Marcar todos</button><button class="btn sm ghost" data-act="nonePresent">Desmarcar todos</button></div>` : ''}
     ${list}
@@ -848,6 +913,7 @@ function viewMatch(){
       ${tb('B')}
     </div>
     ${subHint}
+    ${state.mode === 'fb' && !state.user && !st.done ? `<div class="hint spect" role="status"><span class="ldot"></span><span>Placar ao vivo: atualiza sozinho quando o organizador marca um ponto.</span><span class="spacer"></span><button class="btn sm" data-act="login">Entrar para marcar</button></div>` : ''}
     ${m.startNote && !m.events.length ? `<div class="hint" role="status">${esc(m.startNote)}</div>` : ''}
     <div class="court-wrap"><div class="court ${vertical ? 'v' : 'h'}">${half('A')}${half('B')}${lines}<div class="net"></div></div></div>
     <div class="below">
@@ -1294,9 +1360,76 @@ const act = {
   delMatch(d){ state.ui.confirm = null; if(state.live && state.live.id === d.id) state.live = null; store.deleteMatch(d.id); render(); }
 };
 
+/* ---------- organizadores (versão web com Firebase) ---------- */
+const canWrite = () => state.mode !== 'fb' || !!state.user;
+const WRITE_ACTS = new Set(['delPlayer','gender','bulkOk','start','discardStart','chip','adv','tag','undo','bench','rotate','subMode',
+  'endMatch','rematch','reopen','delSelected','delMatch','importLocal']);
+function renderAcct(){
+  const el = $('#acct'); if(!el) return;
+  if(state.mode !== 'fb'){ el.innerHTML = ''; return; }
+  el.innerHTML = state.user
+    ? `<button class="acct on" data-act="logoutAsk" title="${esc(state.user.email)}"><span class="av">${esc((state.user.email || '?')[0].toUpperCase())}</span><span class="al">Organizador</span></button>`
+    : `<button class="acct" data-act="login"><span class="av">${ICON.lock}</span><span class="al">Entrar</span></button>`;
+}
+function openLogin(msg){
+  const last = LS.get('lastEmail', '');
+  $('#overlay').innerHTML = `<form class="ov login" id="loginForm" style="--tc:var(--gold)" novalidate>
+    <div class="eyebrow">Organizador</div><h2>Entrar</h2>
+    <p class="sub" style="margin:0 auto 14px">${esc(msg || 'Quem entra pode cadastrar jogadores, montar times e marcar pontos. Sem entrar, o app mostra o placar ao vivo e o ranking.')}</p>
+    <label class="fld"><span class="lbl">E-mail</span><input id="loginEmail" type="email" autocomplete="username" inputmode="email" value="${esc(last)}" required></label>
+    <label class="fld"><span class="lbl">Senha</span><input id="loginPass" type="password" autocomplete="current-password" required></label>
+    <p class="lerr" id="loginErr" role="alert"></p>
+    <div class="acts"><button class="cta" type="submit" id="loginBtn">Entrar</button><button class="btn ghost" type="button" data-act="closeOv">Agora não</button></div>
+    <button class="linkbtn" type="button" data-act="resetPass">Esqueci minha senha</button>
+  </form>`;
+  $('#overlay').hidden = false;
+  setTimeout(() => { const i = last ? $('#loginPass') : $('#loginEmail'); if(i) i.focus(); }, 50);
+}
+const AUTH_MSG = {
+  'auth/invalid-credential':'E-mail ou senha incorretos.', 'auth/wrong-password':'E-mail ou senha incorretos.', 'auth/user-not-found':'E-mail ou senha incorretos.',
+  'auth/invalid-email':'Digite um e-mail válido.', 'auth/too-many-requests':'Muitas tentativas. Espere alguns minutos e tente de novo.',
+  'auth/network-request-failed':'Sem internet agora. Conecte-se e tente de novo.', 'auth/user-disabled':'Esta conta foi desativada.'
+};
+document.addEventListener('submit', async e => {
+  if(e.target.id !== 'loginForm') return; e.preventDefault();
+  const email = $('#loginEmail').value.trim(), pass = $('#loginPass').value, err = $('#loginErr'), btn = $('#loginBtn');
+  if(!email || !pass){ err.textContent = 'Preencha e-mail e senha.'; return; }
+  btn.disabled = true; btn.textContent = 'Entrando…'; err.textContent = '';
+  try{ await firebase.auth().signInWithEmailAndPassword(email, pass); LS.set('lastEmail', email); $('#overlay').hidden = true; state.note = ''; renderNote(); }
+  catch(x){ err.textContent = AUTH_MSG[x && x.code] || 'Não foi possível entrar agora.'; btn.disabled = false; btn.textContent = 'Entrar'; }
+});
+Object.assign(act, {
+  login(){ openLogin(); },
+  logoutAsk(){
+    $('#overlay').innerHTML = `<div class="ov" style="--tc:var(--gold)"><div class="eyebrow">Organizador</div><h2>Sair?</h2><p class="sub" style="margin:0 auto">Conectado como <b>${esc(state.user ? state.user.email : '')}</b>. Depois de sair, este aparelho só mostra o placar.</p>
+      <div class="acts"><button class="cta" data-act="logout">Sair</button><button class="btn ghost" data-act="closeOv">Continuar conectado</button></div></div>`;
+    $('#overlay').hidden = false;
+  },
+  async logout(){ $('#overlay').hidden = true; try{ await firebase.auth().signOut(); }catch(e){} },
+  async resetPass(){
+    const email = ($('#loginEmail') || {}).value || '', err = $('#loginErr');
+    if(!email.trim()){ err.textContent = 'Digite seu e-mail acima e toque de novo em "Esqueci minha senha".'; return; }
+    try{ await firebase.auth().sendPasswordResetEmail(email.trim()); err.textContent = 'Enviamos um link para criar uma nova senha. Confira seu e-mail.'; }
+    catch(x){ err.textContent = AUTH_MSG[x && x.code] || 'Não foi possível enviar o e-mail agora.'; }
+  },
+  async importLocal(){
+    const btn = $('[data-act="importLocal"]'); if(btn){ btn.disabled = true; btn.textContent = 'Enviando…'; }
+    try{ const r = await store.importLocal(); state.ui.addMsg = `${r.p} ${r.p === 1 ? 'jogador' : 'jogadores'} e ${r.m} ${r.m === 1 ? 'partida enviada' : 'partidas enviadas'} para o banco do grupo.`; }
+    catch(e){ writeErr(e); }
+    render();
+  },
+  skipImport(){ LS.set('importDone', true); render(); }
+});
+
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-act]'); if(!el || el.disabled) return;
-  const f = act[el.dataset.act]; if(f){ e.preventDefault(); f(el.dataset, el, e); }
+  const a = el.dataset.act, f = act[a]; if(!f) return;
+  e.preventDefault();
+  if(WRITE_ACTS.has(a) && !canWrite()){
+    openLogin(a === 'chip' || a === 'adv' ? 'Para marcar pontos, entre como organizador. Sem entrar, você acompanha o placar ao vivo.' : 'Para fazer alterações, entre como organizador.');
+    return;
+  }
+  f(el.dataset, el, e);
 });
 /* cadastro: um nome ou uma lista inteira colada (WhatsApp, planilha, bloco de notas) */
 const nameKey = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
@@ -1352,6 +1485,7 @@ function addNames(text, list){
 document.addEventListener('submit', e => {
   if(e.target.id !== 'addForm') return; e.preventDefault();
   const inp = $('#newName'); if(!inp.value.trim()) return;
+  if(!canWrite()){ openLogin('Para cadastrar jogadores, entre como organizador.'); return; }
   if(/[,;]/.test(inp.value)) previewNames(inp.value); else addNames(inp.value);
 });
 document.addEventListener('paste', e => {
