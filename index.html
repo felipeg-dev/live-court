@@ -419,7 +419,8 @@ h2.day::first-letter{text-transform:uppercase}
 .mcard{position:relative}
 .mcard.picked{border-color:var(--danger);background:color-mix(in srgb,var(--danger) 8%,var(--arena-2))}
 .mcard.open{grid-column:1/-1}
-.selbox{position:absolute;top:10px;right:10px;background:none;border:0;padding:0;z-index:1}
+.mcard.selecting{padding-left:54px}
+.selbox{position:absolute;top:0;bottom:0;left:0;width:46px;display:grid;place-items:center;background:color-mix(in srgb,var(--ink-3) 8%,transparent);border:0;border-right:1px solid var(--line);border-radius:14px 0 0 14px;padding:0;z-index:1}
 .mcard.picked .check{background:var(--danger);border-color:var(--danger)}
 .mcard.picked .check::after{content:"";width:9px;height:5px;border-left:3px solid var(--arena);border-bottom:3px solid var(--arena);transform:rotate(-45deg) translate(1px,-1px)}
 .detail{border-top:1px solid var(--line);padding-top:10px;display:flex;flex-direction:column;gap:10px;animation:slidein .25s ease-out}
@@ -489,7 +490,17 @@ h2.sec{font-family:var(--f-score);font-weight:800;font-size:26px;text-transform:
   .pane-head{margin-bottom:12px}
   .forms,.hist-list{grid-template-columns:1fr}
 }
-@media (min-width:701px){ .tb .top-row{display:contents} .tb .score{order:3} }
+/* placar compacto (mascote e pontos em cima, nome e botões embaixo) até tablet, para nada invadir o número */
+@media (max-width:900px){
+  .board{grid-template-columns:1fr 1fr;gap:8px}
+  .mid{grid-column:1/-1;grid-row:2;flex-direction:row;gap:12px;padding:0;min-width:0;flex-wrap:wrap}
+  .tb{padding:8px 10px;gap:8px;flex-direction:column;align-items:stretch;text-align:left}
+  .tb.B{flex-direction:column;text-align:right}
+  .tb .top-row{display:flex;align-items:center;justify-content:space-between;gap:6px}
+  .tb.B .top-row{flex-direction:row-reverse}
+}
+@media (min-width:901px){ .tb .top-row{display:contents} .tb .score{order:3} }
+.adv{max-width:100%;overflow:hidden;text-overflow:ellipsis}
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition:none!important}
 }
@@ -758,6 +769,8 @@ function replay(m){
   st.queue = { A:m.teams.A.roster.filter(id => !m.start.A.includes(id)), B:m.teams.B.roster.filter(id => !m.start.B.includes(id)) };
   // quem está em cada time agora (muda quando alguém troca de time no meio da partida)
   st.roster = { A:m.teams.A.roster.slice(), B:m.teams.B.roster.slice() };
+  // quem já sacou nesta partida (o time que começa sacando já conta)
+  st.served = { A:m.firstServe === 'A', B:m.firstServe === 'B' };
   const man = id => { const g = gOf(m, id); return g === 'h' || !g; };
   // rodízio no saque: em partidas novas, vale para o time que tiver reserva (partidas antigas sem "rod" ficam como eram)
   const rodOn = T => Array.isArray(m.rod) && m.cfg.rodizio !== 0 && (m.rod.includes(T) || m.events.some(e => e.t === 'swap' || e.t === 'add'));
@@ -769,7 +782,12 @@ function replay(m){
       const s = st.sets[st.sets.length - 1], o = other(ev.team);
       s[ev.team]++;
       let swap = null;
-      if(st.serving !== ev.team){
+      if(st.serving !== ev.team && m.firstNoRot && !st.served[ev.team]){
+        // regra do grupo: no início, quem está na posição 1 do time que recebe ainda não sacou;
+        // então, no primeiro ponto desse time, ele não roda: quem está na posição 1 vai sacar
+        st.served[ev.team] = true; st.serving = ev.team;
+      } else if(st.serving !== ev.team){
+        st.served[ev.team] = true;
         st.court[ev.team] = rot(st.court[ev.team]); st.serving = ev.team;
         // rodízio no saque: o homem que chegaria para sacar vai para a reserva e o primeiro homem da fila entra sacando
         const c = st.court[ev.team], q = st.queue[ev.team], srv = c[0];
@@ -809,6 +827,8 @@ function replay(m){
       st.court[ev.team] = rot(st.court[ev.team]);
     } else if(ev.t === 'srv'){
       st.serving = ev.team;
+      // antes do primeiro ponto, trocar quem saca também troca quem "já sacou"
+      if(!st.log.length) st.served = { A:ev.team === 'A', B:ev.team === 'B' };
     }
   }
   if(m.status === 'done' && !st.done){ st.done = true; st.winner = m.winner || null; }
@@ -1357,7 +1377,7 @@ function matchCard(m){
                : `<button class="btn sm warn" data-act="ask" data-k="m:${m.id}">Excluir</button>`}
       </div>`}</div>`;
   }
-  return `<div class="mcard ${picked ? 'picked' : ''} ${open ? 'open' : ''}">
+  return `<div class="mcard ${picked ? 'picked' : ''} ${open ? 'open' : ''} ${sel ? 'selecting' : ''}">
     ${sel ? `<button class="selbox" data-act="selToggle" data-id="${m.id}" aria-pressed="${picked}" aria-label="Selecionar partida"><span class="check"></span></button>` : ''}
     ${line('A')}${line('B')}
     <div class="mfoot">${pill}<span>${sets.map(s => s.A + '–' + s.B).join(' · ') || 'sem pontos'}</span>${top ? `<span>· destaque: <b style="color:var(--ink-2)">${esc(pname(top.id, m))}</b> (${top.n})</span>` : ''}<span class="spacer"></span>
@@ -1460,7 +1480,8 @@ function startMatch(teams, cfg, firstServe, extra){
   const rodInfo = one ? { team:one, startBench:teams[one].roster[6] || null, movedIn:extra.movedIn || null } : null;
   const m = { id:uid(), startedAt:Date.now(), status:'live', rev:1, cfg:clone(cfg), firstServe,
     teams:{ A:clone(teams.A), B:clone(teams.B) }, start:{ A:pad(teams.A.roster), B:pad(teams.B.roster) }, names, gens, rod, rodInfo,
-    startNote:extra.note || null, events:[], winner:null };
+    startNote:extra.note || null, events:[], winner:null,
+    firstNoRot:true }; // regra: o time que recebe não roda no seu primeiro ponto (partidas antigas ficam como eram)
   state.live = m; state.ui.sub = null; state.ui.confirm = null;
   state.ui.edit = { sel:null }; // começa conferindo as posições escolhidas pelos times
   store.saveMatch(m);
