@@ -1,5 +1,5 @@
 // Gerado por scripts/build.py — não edite à mão.
-const CACHE = 'live-court-beb502d785';
+const CACHE = 'live-court-c6275924c0';
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png', 'icons/favicon.ico'];
 // arquivos de fora (Firebase e fontes): guardados já na instalação, para o app abrir sem internet na quadra
 const SCRIPTS = ["https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js", "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js", "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"];

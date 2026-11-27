@@ -103,6 +103,24 @@ button.fp:hover{background:var(--panel-2)}
 .note.off{display:flex;align-items:center;gap:10px;background:color-mix(in srgb,var(--ink-3) 14%,var(--arena-2));border-color:var(--line);color:var(--ink-2)}
 .note.off b{color:var(--ink)}
 .offdot{width:10px;height:10px;border-radius:50%;flex:none;background:var(--ink-3);box-shadow:0 0 0 3px color-mix(in srgb,var(--ink-3) 30%,transparent)}
+/* ajustar posições */
+.hint.edit{flex-direction:column;align-items:stretch;gap:10px;background:color-mix(in srgb,var(--gold) 12%,var(--arena-2));color:var(--ink)}
+.hint.edit .et{display:flex;flex-direction:column;gap:2px}
+.hint.edit .et b:first-child{font-family:var(--f-ui);font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--gold);font-size:14px}
+.hint.edit .row{justify-content:flex-end}
+.court-wrap.editing{box-shadow:0 0 0 3px var(--gold) inset}
+.court-wrap.editing .chip{animation:wob 1.6s ease-in-out infinite}
+.court-wrap.editing .cell:nth-child(2n) .chip{animation-delay:-.8s}
+.court-wrap.editing .chip.pick{animation:none;transform:scale(1.12);outline:4px solid var(--gold);outline-offset:3px}
+.court-wrap.editing .chip.empty{cursor:pointer;border-color:rgba(255,245,230,.75)}
+.court-wrap.editing .chip.drop{box-shadow:0 0 0 3px rgba(255,209,92,.45),0 6px 0 rgba(0,0,0,.28)}
+@keyframes wob{0%,100%{transform:rotate(-2deg)}50%{transform:rotate(2deg)}}
+.bchip.pick{outline:3px solid var(--gold);outline-offset:2px}
+.bchip.drop{border-color:color-mix(in srgb,var(--gold) 60%,var(--line))}
+.bchip.target{border-style:dashed;color:var(--gold);background:none}
+.bench.editing{border-color:color-mix(in srgb,var(--gold) 45%,var(--line))}
+.late{margin-top:10px;display:flex;flex-direction:column;gap:6px}
+.late .pc{margin:0}
 .roster-grid{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px}
 .rcard{width:100%;display:grid;grid-template-columns:auto 1fr;grid-template-rows:auto auto;column-gap:10px;align-items:center;text-align:left;background:var(--arena-2);border:1px solid var(--line);border-radius:12px;padding:10px 12px;color:var(--ink)}
 .rcard:hover{border-color:var(--gold)}
@@ -720,7 +738,12 @@ function replay(m){
   const st = { court:{ A:m.start.A.slice(), B:m.start.B.slice() }, serving:m.firstServe, sets:[{A:0,B:0,w:null}], wins:{A:0,B:0}, done:false, winner:null, log:[], swaps:[] };
   // fila da reserva (ordem de entrada) de cada time
   st.queue = { A:m.teams.A.roster.filter(id => !m.start.A.includes(id)), B:m.teams.B.roster.filter(id => !m.start.B.includes(id)) };
+  // quem está em cada time agora (muda quando alguém troca de time no meio da partida)
+  st.roster = { A:m.teams.A.roster.slice(), B:m.teams.B.roster.slice() };
   const man = id => { const g = gOf(m, id); return g === 'h' || !g; };
+  // rodízio no saque: em partidas novas, vale para o time que tiver reserva (partidas antigas sem "rod" ficam como eram)
+  const rodOn = T => Array.isArray(m.rod) && m.cfg.rodizio !== 0 && (m.rod.includes(T) || m.events.some(e => e.t === 'swap' || e.t === 'add'));
+  const where = id => { for(const T of ['A','B']){ const i = st.court[T].indexOf(id); if(i >= 0) return { team:T, slot:i }; if(st.queue[T].includes(id)) return { team:T, slot:-1 }; } return null; };
   const need = Math.ceil(m.cfg.bestOf / 2);
   for(const ev of m.events){
     if(st.done) break;
@@ -732,7 +755,7 @@ function replay(m){
         st.court[ev.team] = rot(st.court[ev.team]); st.serving = ev.team;
         // rodízio no saque: o homem que chegaria para sacar vai para a reserva e o primeiro homem da fila entra sacando
         const c = st.court[ev.team], q = st.queue[ev.team], srv = c[0];
-        if((m.rod || []).includes(ev.team) && srv && man(srv)){
+        if(rodOn(ev.team) && srv && man(srv)){
           const qi = q.findIndex(man);
           if(qi >= 0){ const inn = q.splice(qi, 1)[0]; c[0] = inn; q.push(srv); swap = { team:ev.team, out:srv, in:inn }; st.swaps.push(swap); }
         }
@@ -749,6 +772,21 @@ function replay(m){
     } else if(ev.t === 'sub'){
       const c = st.court[ev.team], i = c.indexOf(ev.out); if(i >= 0) c[i] = ev.in;
       const q = st.queue[ev.team], qi = q.indexOf(ev.in); if(qi >= 0) q.splice(qi, 1); if(ev.out && !q.includes(ev.out)) q.push(ev.out);
+    } else if(ev.t === 'swap'){
+      // ajuste de posições: troca dois lugares (quadra, banco ou outro time); lugar vazio vale como destino
+      const la = ev.a.id ? where(ev.a.id) : { team:ev.a.team, slot:ev.a.slot };
+      const lb = ev.b.id ? where(ev.b.id) : { team:ev.b.team, slot:ev.b.slot };
+      if(!la || !lb) continue;
+      const take = (l, id) => { if(!id) return; if(l.slot >= 0) st.court[l.team][l.slot] = null; else { const q = st.queue[l.team]; q.splice(q.indexOf(id), 1); } };
+      const put = (l, id) => { if(!id) return; if(l.slot >= 0 && !st.court[l.team][l.slot]) st.court[l.team][l.slot] = id; else st.queue[l.team].push(id); };
+      take(la, ev.a.id); take(lb, ev.b.id);
+      put(lb, ev.a.id); put(la, ev.b.id);
+      const move = (id, from, to) => { if(!id || from === to) return; st.roster[from] = st.roster[from].filter(x => x !== id); if(!st.roster[to].includes(id)) st.roster[to].push(id); };
+      move(ev.a.id, la.team, lb.team); move(ev.b.id, lb.team, la.team);
+      // lugar que ficou vazio na quadra é ocupado por quem está esperando no banco daquele time
+      for(const T of ['A','B']){ const c = st.court[T]; for(let i = 0; i < 6; i++) if(!c[i] && st.queue[T].length) c[i] = st.queue[T].shift(); }
+    } else if(ev.t === 'add'){
+      if(!st.roster.A.includes(ev.id) && !st.roster.B.includes(ev.id)){ st.roster[ev.team].push(ev.id); st.queue[ev.team].push(ev.id); }
     } else if(ev.t === 'rot'){
       st.court[ev.team] = rot(st.court[ev.team]);
     } else if(ev.t === 'srv'){
@@ -757,6 +795,14 @@ function replay(m){
   }
   if(m.status === 'done' && !st.done){ st.done = true; st.winner = m.winner || null; }
   return st;
+}
+// times como terminaram a partida (considera quem trocou de time ou entrou depois)
+const _rosterCache = new Map();
+function rosters(m){
+  const k = m.id + ':' + m.events.length + ':' + (m.rev || 0);
+  let r = _rosterCache.get(k);
+  if(!r){ const st = replay(m); r = { A:st.roster.A.slice(), B:st.roster.B.slice() }; _rosterCache.set(k, r); }
+  return r;
 }
 const tieIdx = (m, idx) => m.cfg.bestOf > 1 && idx === m.cfg.bestOf - 1;
 
@@ -826,7 +872,7 @@ function renderNote(){
 function playerTotals(){
   const t = {};
   for(const m of state.matches){ if(m.status !== 'done') continue;
-    for(const T of ['A','B']) for(const id of m.teams[T].roster){ (t[id] = t[id] || { g:0, p:0 }).g++; }
+    for(const T of ['A','B']) for(const id of rosters(m)[T]){ (t[id] = t[id] || { g:0, p:0 }).g++; }
     for(const ev of m.events) if(ev.t === 'pt' && ev.p && t[ev.p]) t[ev.p].p++;
   }
   return t;
@@ -980,27 +1026,49 @@ function viewMatch(){
     </div>`; };
   const doneSets = st.sets.filter(s => s.w);
   const V = vertical ? 'V' : 'H';
+  // modo "Ajustar posições": tocar num jogador e depois no lugar para onde ele vai
+  const ed = !viewer() && !st.done && state.ui.edit ? state.ui.edit : null;
+  const sel = ed && ed.sel;
+  const isSel = (T, id, slot) => sel && sel.team === T && (id ? sel.id === id : sel.slot === slot);
   const half = T => { const t = m.teams[T], court = st.court[T], map = POSMAP[V + T];
     let cells = '';
     for(let i = 0; i < 6; i++){
       const pos = i + 1, pid = court[i], [c, r] = map[pos];
       const srv = st.serving === T && pos === 1 && !st.done;
-      const pick = state.ui.sub && state.ui.sub.out === pid && pid;
-      cells += `<div class="cell" style="grid-column:${c};grid-row:${r}">${pid
-        ? `<button class="chip ${pick ? 'pick' : ''}" ${viewer() ? 'disabled' : ''} data-act="chip" data-team="${T}" data-id="${pid}" aria-label="Ponto de ${esc(pname(pid, m))}"><span class="pos">${pos}</span><span class="nm ${shortName(pid, m).length > 6 ? 'long' : ''}">${esc(shortName(pid, m))}</span>${ptsBy[pid] ? `<span class="cnt">${ptsBy[pid]}</span>` : ''}${srv ? BALL : ''}</button>`
-        : `<div class="chip empty"><span class="pos">${pos}</span><span class="nm">vazio</span></div>`}</div>`;
+      const inner = pid
+        ? `<span class="pos">${pos}</span><span class="nm ${shortName(pid, m).length > 6 ? 'long' : ''}">${esc(shortName(pid, m))}</span>${ptsBy[pid] ? `<span class="cnt">${ptsBy[pid]}</span>` : ''}${srv ? BALL : ''}`
+        : `<span class="pos">${pos}</span><span class="nm">${ed ? 'livre' : 'vazio'}</span>`;
+      let chip;
+      if(ed) chip = `<button class="chip ${pid ? '' : 'empty'} ${isSel(T, pid, i) ? 'pick' : ''} ${sel && !isSel(T, pid, i) ? 'drop' : ''}" data-act="place" data-team="${T}" data-slot="${i}" data-id="${pid || ''}" aria-label="${pid ? esc(pname(pid, m)) + ', posição ' + pos : 'Posição ' + pos + ' livre'}">${inner}</button>`;
+      else if(pid) chip = `<button class="chip" ${viewer() ? 'disabled' : ''} data-act="chip" data-team="${T}" data-id="${pid}" aria-label="Ponto de ${esc(pname(pid, m))}">${inner}</button>`;
+      else chip = `<div class="chip empty">${inner}</div>`;
+      cells += `<div class="cell" style="grid-column:${c};grid-row:${r}">${chip}</div>`;
     }
     return `<div class="half" id="half${T}" style="--tc:${t.color}">${cells}</div>`; };
   const lines = vertical ? `<div class="aline" style="top:33.33%"></div><div class="aline" style="top:66.66%"></div>` : `<div class="aline" style="left:33.33%"></div><div class="aline" style="left:66.66%"></div>`;
+  const rodActive = T => Array.isArray(m.rod) && m.cfg.rodizio !== 0 && st.queue[T].length > 0 && (m.rod.includes(T) || m.events.some(e => e.t === 'swap' || e.t === 'add'));
+  const inMatch = new Set([...st.roster.A, ...st.roster.B]);
+  const late = ed ? sortedPlayers().filter(p => state.present.has(p.id) && !inMatch.has(p.id)) : [];
   const bench = T => { const t = m.teams[T], b = st.queue[T];
-    const subT = state.ui.sub && state.ui.sub.team === T && state.ui.sub.out;
-    const rodT = (m.rod || []).includes(T);
+    const rodT = rodActive(T);
     const nextIn = rodT ? b.find(id => { const g = gOf(m, id); return g === 'h' || !g; }) : null;
-    return `<div class="bench ${rodT ? 'rod' : ''}" style="--tc:${t.color}"><div class="lbl"><span>${rodT ? 'Reserva · rodízio no saque' : 'Banco'} · ${esc(t.name)}</span>${viewer() ? '' : `<button class="btn sm ghost" data-act="rotate" data-team="${T}" title="Rodar manualmente">Rodar</button>`}</div>
-      ${b.length ? `<ul>${b.map(id => `<li><button class="bchip ${subT ? 'can' : ''} ${id === nextIn ? 'next' : ''}" ${viewer() ? 'disabled' : ''} data-act="bench" data-team="${T}" data-id="${id}">${gTag(gOf(m, id))} ${esc(shortName(id, m))}${ptsBy[id] ? ` · ${ptsBy[id]}` : ''}${id === nextIn ? '<em>entra no próximo saque</em>' : ''}</button></li>`).join('')}</ul>` : `<p class="none">Sem reservas</p>`}
-      ${rodT ? `<p class="none" style="margin-top:6px">Quando o time recupera o saque, o homem que iria sacar vai para a reserva e quem está esperando entra sacando.</p>` : ''}</div>`; };
+    const chipB = id => ed
+      ? `<button class="bchip ${isSel(T, id, -1) ? 'pick' : ''} ${sel && !isSel(T, id, -1) ? 'drop' : ''}" data-act="place" data-team="${T}" data-slot="-1" data-id="${id}">${gTag(gOf(m, id))} ${esc(shortName(id, m))}</button>`
+      : `<button class="bchip ${id === nextIn ? 'next' : ''}" disabled>${gTag(gOf(m, id))} ${esc(shortName(id, m))}${ptsBy[id] ? ` · ${ptsBy[id]}` : ''}${id === nextIn ? '<em>entra no próximo saque</em>' : ''}</button>`;
+    const toBench = ed && sel && !(sel.team === T && sel.slot === -1)
+      ? `<li><button class="bchip drop target" data-act="place" data-team="${T}" data-slot="-1" data-id="">${sel.team === T ? 'Mandar para o banco' : 'Mandar para este time'}</button></li>` : '';
+    return `<div class="bench ${rodT ? 'rod' : ''} ${ed ? 'editing' : ''}" style="--tc:${t.color}"><div class="lbl"><span>${rodT ? 'Reserva · rodízio no saque' : 'Banco'} · ${esc(t.name)}</span>${viewer() || ed ? '' : `<button class="btn sm ghost" data-act="rotate" data-team="${T}" title="Rodar manualmente">Rodar</button>`}</div>
+      ${b.length || toBench ? `<ul>${b.map(id => `<li>${chipB(id)}</li>`).join('')}${toBench}</ul>` : `<p class="none">Sem reservas</p>`}
+      ${ed && late.length ? `<div class="late"><span class="pc">Chegou depois? Toque para colocar no banco deste time:</span><div class="row">${late.map(p => `<button class="btn sm ghost" data-act="addToTeam" data-team="${T}" data-id="${p.id}">+ ${esc(p.name.split(' ')[0])}</button>`).join('')}</div></div>` : ''}
+      ${rodT && !ed ? `<p class="none" style="margin-top:6px">Quando o time recupera o saque, o homem que iria sacar vai para a reserva e quem está esperando entra sacando.</p>` : ''}</div>`; };
   const feed = st.log.slice(-6).reverse();
-  const subHint = state.ui.sub ? `<div class="hint" role="status">${state.ui.sub.out ? `Agora toque no reserva que entra no lugar de <b>${esc(pname(state.ui.sub.out, m))}</b>.` : 'Substituição: toque no jogador da quadra que vai sair.'}<span class="spacer"></span><button class="btn sm" data-act="subMode">Cancelar</button></div>` : '';
+  const selName = sel ? esc(pname(sel.id, m)) : '';
+  const subHint = ed ? `<div class="hint edit" role="status">
+      <div class="et"><b>Ajustar posições</b><span>${sel
+        ? `Agora toque no lugar para onde <b>${selName}</b> vai: outro jogador (os dois trocam), um lugar livre, o banco ou o outro time. Toque nele de novo para desmarcar.`
+        : 'Toque em um jogador e depois no lugar para onde ele vai. Dá para trocar dois da quadra, trazer alguém do banco ou passar alguém para o outro time.'}</span></div>
+      <div class="row"><button class="btn sm ghost" data-act="srvSwap">Saca primeiro: ${esc(m.teams[st.serving].name)} ⇄</button><button class="btn sm on" data-act="editDone">Pronto, marcar pontos</button></div>
+    </div>` : '';
   const endConf = state.ui.confirm === 'end';
   return `<section>
     <div class="board">
@@ -1011,12 +1079,12 @@ function viewMatch(){
     ${subHint}
     ${state.mode === 'fb' && !state.user && !st.done ? `<div class="hint spect" role="status"><span class="ldot"></span><span>Placar ao vivo: atualiza sozinho quando o organizador marca um ponto.</span><span class="spacer"></span><button class="btn sm" data-act="login">Entrar para marcar</button></div>` : ''}
     ${m.startNote && !m.events.length ? `<div class="hint" role="status">${esc(m.startNote)}</div>` : ''}
-    <div class="court-wrap"><div class="court ${vertical ? 'v' : 'h'}">${half('A')}${half('B')}${lines}<div class="net"></div></div></div>
+    <div class="court-wrap ${ed ? 'editing' : ''}"><div class="court ${vertical ? 'v' : 'h'}">${half('A')}${half('B')}${lines}<div class="net"></div></div></div>
     <div class="below">
       ${bench('A')}
       ${viewer() ? `<div class="controls"><button class="btn ghost" data-act="sound">${state.sound ? 'Som ligado' : 'Som desligado'}</button></div>` : `<div class="controls">
         <button class="btn" data-act="undo" ${m.events.length ? '' : 'disabled'}>↶ Desfazer</button>
-        <button class="btn ${state.ui.sub ? 'on' : ''}" data-act="subMode" ${st.done ? 'disabled' : ''}>Substituição</button>
+        <button class="btn ${ed ? 'on' : ''}" data-act="editMode" ${st.done ? 'disabled' : ''}>Ajustar posições</button>
         <button class="btn ghost" data-act="sound">${state.sound ? 'Som ligado' : 'Som desligado'}</button>
         ${st.done ? `<button class="btn ghost" data-act="showEnd">Ver resultado</button>`
           : endConf ? `<span class="confirm">Encerrar agora? <button class="btn sm warn" data-act="endMatch">Sim</button><button class="btn sm ghost" data-act="cancel">Não</button></span>`
@@ -1038,7 +1106,7 @@ function computeStats(){
   for(const m of done){
     const cnt = {};
     for(const ev of m.events) if(ev.t === 'pt' && ev.p){ const c = cnt[ev.p] = cnt[ev.p] || { n:0, atk:0, blk:0, ace:0 }; c.n++; if(ev.k) c[ev.k]++; }
-    for(const T of ['A','B']) for(const id of m.teams[T].roster){
+    for(const T of ['A','B']) for(const id of rosters(m)[T]){
       const s = P[id] = P[id] || { id, name:pname(id, m), games:0, wins:0, pts:0, atk:0, blk:0, ace:0, series:[] };
       const c = cnt[id] || { n:0, atk:0, blk:0, ace:0 };
       s.games++; if(m.winner === T) s.wins++; s.pts += c.n; s.atk += c.atk; s.blk += c.blk; s.ace += c.ace; s.series.push(c.n);
@@ -1058,7 +1126,7 @@ function lineupStats(done){
   for(const m of done){
     const st = replay(m);
     for(const T of ['A','B']){
-      const ids = m.teams[T].roster.slice().sort();
+      const ids = rosters(m)[T].slice().sort();
       const diff = st.sets.reduce((n, s) => n + s[T] - s[other(T)], 0);
       const won = m.winner === T ? 1 : 0;
       const f = F[ids.join('|')] = F[ids.join('|')] || { key:ids.join('|'), ids, games:0, wins:0, diff:0, last:0, m };
@@ -1120,14 +1188,14 @@ function playerData(id){
   const games = [], mates = {}, opps = {};
   let bench = 0, moved = 0;
   for(const m of done){
-    const T = m.teams.A.roster.includes(id) ? 'A' : m.teams.B.roster.includes(id) ? 'B' : null;
+    const R = rosters(m), T = R.A.includes(id) ? 'A' : R.B.includes(id) ? 'B' : null;
     if(!T) continue;
     const O = other(T), st = replay(m), won = m.winner === T;
     const k = { atk:0, blk:0, ace:0, x:0 }; let pts = 0;
     for(const e of m.events) if(e.t === 'pt' && e.p === id){ pts++; k[e.k || 'x']++; }
     games.push({ m, T, won, draw:!m.winner, pts, k, sets:st.sets.filter(s => s.w || s.A || s.B), wins:st.wins });
-    for(const o of m.teams[T].roster) if(o !== id){ const x = mates[o] = mates[o] || { id:o, g:0, w:0, m }; x.g++; x.w += won ? 1 : 0; x.m = m; }
-    for(const o of m.teams[O].roster){ const x = opps[o] = opps[o] || { id:o, g:0, w:0, m }; x.g++; x.w += won ? 1 : 0; x.m = m; }
+    for(const o of R[T]) if(o !== id){ const x = mates[o] = mates[o] || { id:o, g:0, w:0, m }; x.g++; x.w += won ? 1 : 0; x.m = m; }
+    for(const o of R[O]){ const x = opps[o] = opps[o] || { id:o, g:0, w:0, m }; x.g++; x.w += won ? 1 : 0; x.m = m; }
     if(m.rodInfo){ if(m.rodInfo.startBench === id) bench++; if(m.rodInfo.movedIn === id) moved++; }
   }
   const n = games.length, wins = games.filter(g => g.won).length, pts = games.reduce((s, g) => s + g.pts, 0);
@@ -1254,7 +1322,7 @@ function matchCard(m){
   if(open){
     const cnt = {}; m.events.forEach(e => { if(e.t === 'pt' && e.p){ const c = cnt[e.p] = cnt[e.p] || { n:0, atk:0, blk:0, ace:0 }; c.n++; if(e.k) c[e.k]++; } });
     const adv = T => m.events.filter(e => e.t === 'pt' && !e.p && e.team === T).length;
-    const col = T => { const t = m.teams[T]; const r = t.roster.slice().sort((a, b) => ((cnt[b] || {}).n || 0) - ((cnt[a] || {}).n || 0));
+    const col = T => { const t = m.teams[T]; const r = rosters(m)[T].slice().sort((a, b) => ((cnt[b] || {}).n || 0) - ((cnt[a] || {}).n || 0));
       return `<div class="dcol" style="--tc:${t.color}"><div class="lbl">${esc(t.name)}</div><ul>${r.map(id => { const c = cnt[id] || { n:0, atk:0, blk:0, ace:0 }; const k = [c.atk && c.atk + ' atq', c.blk && c.blk + ' bloq', c.ace && c.ace + ' saque'].filter(Boolean).join(' · ');
         return `<li><button class="plink nm" data-act="player" data-id="${id}">${gTag(pg(id))}<span>${esc(pname(id, m))}</span></button>${k ? `<span class="pc">${k}</span>` : ''}<b>${c.n}</b></li>`; }).join('')}<li class="advl"><span class="nm">Erros do adversário</span><b>${adv(T)}</b></li></ul></div>`; };
     const mins = m.endedAt ? Math.round((m.endedAt - m.startedAt) / 60000) : null;
@@ -1376,6 +1444,7 @@ function startMatch(teams, cfg, firstServe, extra){
     teams:{ A:clone(teams.A), B:clone(teams.B) }, start:{ A:pad(teams.A.roster), B:pad(teams.B.roster) }, names, gens, rod, rodInfo,
     startNote:extra.note || null, events:[], winner:null };
   state.live = m; state.ui.sub = null; state.ui.confirm = null;
+  state.ui.edit = { sel:null }; // começa conferindo as posições escolhidas pelos times
   store.saveMatch(m);
   state.view = 'partida'; LS.set('view', 'partida'); keepAwake(); render();
 }
@@ -1390,12 +1459,17 @@ function rodCounts(){
 const isMan = id => { const g = pg(id); return g === 'h' || !g; };
 const pickFewest = (list, cnt) => list.slice().sort((x, y) => (cnt[x] || 0) - (cnt[y] || 0) || Math.random() - .5)[0];
 function nextLineup(m){
+  // parte dos times como terminaram (quem trocou de time no meio da partida fica onde terminou)
+  const fin = rosters(m);
   const teams = { A:clone(m.teams.A), B:clone(m.teams.B) };
-  ['A','B'].forEach(T => { teams[T].roster = teams[T].roster.filter(id => state.players[id]); });
+  ['A','B'].forEach(T => { teams[T].roster = fin[T].filter(id => state.players[id]); });
   const base = { teams, cfg:clone(m.cfg), firstServe:other(m.firstServe), movedIn:null, note:null };
-  const info = m.rodInfo; if(!info || !info.team) return base;
-  const T = info.team, O = other(T), RT = teams[T].roster, RO = teams[O].roster;
-  if(RT.length !== RO.length + 1) return base;
+  if(m.cfg.rodizio === 0) return base;
+  const dA = teams.A.roster.length - teams.B.roster.length;
+  if(Math.abs(dA) !== 1) return base;
+  const T = dA > 0 ? 'A' : 'B', O = other(T), RT = teams[T].roster, RO = teams[O].roster;
+  const i0 = m.rodInfo || {};
+  const info = { team:T, startBench:i0.team === T && RT.includes(i0.startBench) ? i0.startBench : null, movedIn:i0.movedIn || null };
   const { b, mv } = rodCounts();
   // quem troca de time: um homem do time que rodou, nunca quem começou na reserva (nem quem acabou de chegar, se der)
   let cands = RT.filter(id => isMan(id) && id !== info.startBench && id !== info.movedIn);
@@ -1413,6 +1487,7 @@ function nextLineup(m){
 }
 function addPoint(T, pid, el){
   const m = state.live; if(!m || m.status !== 'live') return;
+  state.ui.edit = null;
   const before = replay(m);
   if(before.done) return;
   const ev = { t:'pt', team:T, p:pid || null, k:null, ts:Date.now() };
@@ -1538,16 +1613,30 @@ const act = {
     state.draft.cfg = clone(nl.cfg); state.draft.firstServe = nl.firstServe; state.draft.movedIn = nl.movedIn; state.draft.note = nl.note;
     saveDraft(); savePresent(); act.nav({ v:'times' }); },
   discardStart(){ const old = state.live; if(old){ old.status = 'cancelled'; commit(old); } state.live = null; act.start(); },
-  chip(d, el){
-    const s = state.ui.sub;
-    if(s){ if(s.team && s.team !== d.team){ s.team = d.team; } s.team = d.team; s.out = d.id; render(); return; }
-    addPoint(d.team, d.id, el);
+  chip(d, el){ if(state.ui.edit) return; addPoint(d.team, d.id, el); },
+  editMode(){ state.ui.edit = state.ui.edit ? null : { sel:null }; $('#toast').hidden = true; render(); },
+  editDone(){ state.ui.edit = null; render(); },
+  place(d){
+    const m = state.live, e = state.ui.edit; if(!m || !e) return;
+    const tgt = { team:d.team, slot:Number(d.slot), id:d.id || null };
+    if(!e.sel){ if(!tgt.id) return; e.sel = tgt; render(); return; }
+    if(tgt.id && e.sel.id === tgt.id){ e.sel = null; render(); return; }
+    m.events.push({ t:'swap', a:e.sel, b:tgt, ts:Date.now() });
+    const moved = e.sel.team !== tgt.team, who = e.sel.id;
+    e.sel = null; commit(m); render();
+    // destaca quem mudou de lugar
+    [who, tgt.id].filter(Boolean).forEach(id => { const c = document.querySelector(`[data-act="place"][data-id="${id}"]`); if(c){ c.classList.add('enter'); } });
+    if(moved){ const t = m.teams[tgt.team]; const el = $('#toast'); el.style.setProperty('--tc', t.color);
+      el.innerHTML = `<span class="t">${esc(pname(who, m))} agora joga no time ${esc(t.name)}</span><span class="bar"></span>`; el.hidden = false;
+      clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.hidden = true; }, 3000); }
   },
+  srvSwap(){ const m = state.live; if(!m) return; const st = replay(m); m.events.push({ t:'srv', team:other(st.serving), ts:Date.now() }); commit(m); render(); },
+  addToTeam(d){ const m = state.live; if(!m) return; m.events.push({ t:'add', team:d.team, id:d.id, ts:Date.now() });
+    if(!m.names[d.id]) m.names[d.id] = pname(d.id); if(m.gens && !(d.id in m.gens)) m.gens[d.id] = pg(d.id); commit(m); render(); },
   adv(d, el){ addPoint(d.team, null, el); },
   tag(d){ const ev = state.ui.lastEv, m = state.live; if(!ev || !m) return; ev.k = d.k; commit(m); $('#toast').hidden = true; render(); },
   undo(){ const m = state.live; if(!m || !m.events.length) return; m.events.pop(); m.status = 'live'; m.winner = null; delete m.endedAt; commit(m); sound('undo'); $('#toast').hidden = true; $('#overlay').hidden = true; render(); },
-  subMode(){ state.ui.sub = state.ui.sub ? null : { team:null, out:null }; render(); },
-  bench(d){ const s = state.ui.sub, m = state.live; if(!s || !s.out || s.team !== d.team || !m) return; m.events.push({ t:'sub', team:d.team, out:s.out, in:d.id, ts:Date.now() }); commit(m); state.ui.sub = null; render(); },
+  subMode(){ act.editMode(); },
   rotate(d){ const m = state.live; if(!m || m.status !== 'live') return; m.events.push({ t:'rot', team:d.team, ts:Date.now() }); commit(m); render(); },
   sound(){ state.sound = !state.sound; LS.set('sound', state.sound); render(); if(state.sound) sound('pt'); },
   endMatch(){ const m = state.live; if(!m) return; const st = replay(m); const cur = st.sets[st.sets.length - 1];
@@ -1566,7 +1655,7 @@ const act = {
 /* ---------- organizadores (versão web com Firebase) ---------- */
 const canWrite = () => state.mode !== 'fb' || !!state.user;
 const WRITE_ACTS = new Set(['delPlayer','gender','bulkOk','start','discardStart','chip','adv','tag','undo','bench','rotate','subMode',
-  'endMatch','rematch','reopen','delSelected','delMatch','importLocal']);
+  'endMatch','rematch','reopen','delSelected','delMatch','importLocal','editMode','editDone','place','srvSwap','addToTeam']);
 // o que quem só visualiza pode fazer; qualquer outra ação pede o login
 const VIEW_ACTS = new Set(['nav','player','openFromPlayer','shareP','openMatch','sort','gfilter','closeOv','goStats','showEnd','sound','login','resetPass','cancel']);
 function renderAcct(){
@@ -1709,7 +1798,7 @@ document.addEventListener('change', e => {
   if(el.classList.contains('tname-in')) render();
 });
 document.addEventListener('keydown', e => {
-  if(e.key === 'Escape'){ $('#overlay').hidden = true; if(state.ui.sub){ state.ui.sub = null; render(); } }
+  if(e.key === 'Escape'){ $('#overlay').hidden = true; if(state.ui.edit && state.ui.edit.sel){ state.ui.edit.sel = null; render(); } }
   if((e.ctrlKey || e.metaKey) && e.key === 'z' && state.view === 'partida' && !/INPUT|SELECT/.test(document.activeElement.tagName)){ e.preventDefault(); act.undo(); }
 });
 $('#overlay').addEventListener('click', e => { if(e.target.id === 'overlay') $('#overlay').hidden = true; });
